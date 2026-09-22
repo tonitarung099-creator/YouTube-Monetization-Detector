@@ -21,6 +21,13 @@ assert.ok(d, "Detector harus tersedia di globalThis");
 }
 
 {
+  const r = d.detectFromChannelHtml(
+    '<div>{"showLiveChatActionPanelRenderer":{}}</div>'
+  );
+  assert.equal(r.status, "unknown");
+}
+
+{
   const r = d.detectFromChannelHtml("<html><body>channel biasa</body></html>");
   assert.equal(r.status, "unknown");
 }
