@@ -2,6 +2,8 @@ importScripts("detector.js");
 
 const CACHE_PREFIX = "ymd:channel:";
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const SAMPLE_VIDEO_COUNT = 3;
+const FETCH_TIMEOUT_MS = 12000;
 
 function cacheKey(url) {
   return CACHE_PREFIX + url;
@@ -23,11 +25,71 @@ async function setCached(url, result) {
   });
 }
 
-async function incrementStats() {
-  const { ymdStats = { scans: 0 } } = await chrome.storage.local.get("ymdStats");
+async function incrementStats(videoSamples = 0) {
+  const { ymdStats = { scans: 0, videoSamples: 0 } } =
+    await chrome.storage.local.get("ymdStats");
+
   ymdStats.scans = (ymdStats.scans || 0) + 1;
+  ymdStats.videoSamples = (ymdStats.videoSamples || 0) + videoSamples;
   ymdStats.lastScanAt = Date.now();
+
   await chrome.storage.local.set({ ymdStats });
+}
+
+async function fetchText(url, credentials = "include") {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      credentials,
+      signal: controller.signal,
+      cache: "no-store",
+      headers: {
+        "Accept-Language": "id-ID,id;q=0.9,en;q=0.7"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`YouTube merespons HTTP ${response.status}`);
+    }
+
+    return await response.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function inspectSampleVideo(videoId) {
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+  try {
+    const html = await fetchText(url, "omit");
+    const detection = YMDDetector.detectFromVideoHtml(html);
+
+    return {
+      videoId,
+      url,
+      ok: true,
+      status: detection.status,
+      signals: detection.signals
+    };
+  } catch (error) {
+    return {
+      videoId,
+      url,
+      ok: false,
+      status: "unknown",
+      signals: [],
+      error: error?.message || "Gagal memeriksa video"
+    };
+  }
+}
+
+function pickSampleVideoIds(html) {
+  const ids = YMDDetector.extractVideoIds(html, 12);
+  return ids.slice(0, SAMPLE_VIDEO_COUNT);
 }
 
 async function scanChannel(rawUrl, force = false) {
@@ -41,37 +103,44 @@ async function scanChannel(rawUrl, force = false) {
     if (cached) return { ...cached, cached: true };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const [channelHtml, videosHtml] = await Promise.all([
+    fetchText(url),
+    fetchText(url + "/videos").catch(() => "")
+  ]);
 
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      credentials: "include",
-      signal: controller.signal,
-      headers: {
-        "Accept-Language": "id-ID,id;q=0.9,en;q=0.7"
-      }
-    });
+  const channelDetection = YMDDetector.detectFromChannelHtml(
+    channelHtml + "\n" + videosHtml
+  );
 
-    if (!response.ok) {
-      throw new Error(`YouTube merespons HTTP ${response.status}`);
-    }
+  const sampleIds = pickSampleVideoIds(videosHtml || channelHtml);
+  const sampleResults = await Promise.all(
+    sampleIds.map((videoId) => inspectSampleVideo(videoId))
+  );
 
-    const html = await response.text();
-    const detection = YMDDetector.detectFromChannelHtml(html);
-    const result = {
-      ...detection,
-      channelUrl: url,
-      cached: false
-    };
+  const videoDetections = sampleResults
+    .filter((sample) => sample.ok)
+    .map((sample) => ({
+      status: sample.status,
+      signals: sample.signals
+    }));
 
-    await setCached(url, result);
-    await incrementStats();
-    return result;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const merged = YMDDetector.mergeChannelEvidence(
+    channelDetection,
+    videoDetections
+  );
+
+  const result = {
+    ...merged,
+    channelUrl: url,
+    cached: false,
+    samples: sampleResults,
+    methodVersion: 2
+  };
+
+  await setCached(url, result);
+  await incrementStats(sampleResults.length);
+
+  return result;
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
