@@ -48,6 +48,11 @@
     };
   }
 
+  function clearUi() {
+    document.getElementById("ymd-floating-status")?.remove();
+    for (const badge of document.querySelectorAll(".ymd-badge")) badge.remove();
+  }
+
   function ensureGlobalPanel() {
     let panel = document.getElementById("ymd-floating-status");
     if (panel) return panel;
@@ -70,21 +75,24 @@
     }
 
     const panel = ensureGlobalPanel();
-    panel.className = `ymd-floating ymd-status-${result.status || "unknown"}`;
+    const nextClass = `ymd-floating ymd-status-${result.status || "unknown"}`;
+    if (panel.className !== nextClass) panel.className = nextClass;
+
+    const nextText =
+      result.status === "detected"
+        ? "Monetisasi terdeteksi"
+        : result.status === "possible"
+        ? "Kemungkinan monetisasi"
+        : "Status monetisasi belum pasti";
+
     const text = panel.querySelector(".ymd-floating-text");
-    if (text) {
-      text.textContent =
-        result.status === "detected"
-          ? "Monetisasi terdeteksi"
-          : result.status === "possible"
-          ? "Kemungkinan monetisasi"
-          : "Status monetisasi belum pasti";
-    }
+    if (text && text.textContent !== nextText) text.textContent = nextText;
 
     const signalText = (result.signals || []).map((s) => s.label).join(" • ");
-    panel.title =
+    const nextTitle =
       signalText ||
       "Tidak ada sinyal publik yang cukup untuk memastikan status monetisasi.";
+    if (panel.title !== nextTitle) panel.title = nextTitle;
   }
 
   function createBadge(result, settings) {
@@ -169,7 +177,10 @@
   }
 
   async function scanPage() {
-    if (!(await getEnabled())) return;
+    if (!(await getEnabled())) {
+      clearUi();
+      return;
+    }
 
     const myToken = routeToken;
     const settings = await getSettings();
@@ -227,11 +238,31 @@
     scheduleScan(650);
   }
 
+  function isExtensionMutation(mutation) {
+    const target =
+      mutation.target?.nodeType === Node.ELEMENT_NODE
+        ? mutation.target
+        : mutation.target?.parentElement;
+
+    if (target?.closest?.("#ymd-floating-status, .ymd-badge")) return true;
+
+    const added = Array.from(mutation.addedNodes || []);
+    if (!added.length) return false;
+
+    return added.every((node) => {
+      if (node.nodeType !== Node.ELEMENT_NODE) return false;
+      return (
+        node.matches?.("#ymd-floating-status, .ymd-badge") ||
+        node.closest?.("#ymd-floating-status, .ymd-badge")
+      );
+    });
+  }
+
   function startObserver() {
     observer?.disconnect();
     observer = new MutationObserver((mutations) => {
       const relevant = mutations.some(
-        (m) => m.addedNodes?.length || m.type === "attributes"
+        (m) => !isExtensionMutation(m) && Boolean(m.addedNodes?.length)
       );
       if (relevant) scheduleScan(650);
     });
@@ -247,6 +278,12 @@
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
+
+    if (changes.ymdEnabled && changes.ymdEnabled.newValue === false) {
+      clearUi();
+      return;
+    }
+
     if (changes.ymdEnabled || changes.ymdSettings) resetForNavigation();
   });
 
