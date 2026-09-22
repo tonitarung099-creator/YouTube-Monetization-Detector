@@ -43,7 +43,7 @@
   async function getSettings() {
     const { ymdSettings = {} } = await chrome.storage.local.get("ymdSettings");
     return {
-      maxChannelsPerPage: Number(ymdSettings.maxChannelsPerPage) || 30,
+      maxChannelsPerPage: Number(ymdSettings.maxChannelsPerPage) || 15,
       showConfidence: ymdSettings.showConfidence !== false
     };
   }
@@ -51,6 +51,24 @@
   function clearUi() {
     document.getElementById("ymd-floating-status")?.remove();
     for (const badge of document.querySelectorAll(".ymd-badge")) badge.remove();
+  }
+
+  function resultDetails(result) {
+    const lines = [];
+    for (const signal of result?.signals || []) {
+      lines.push("• " + signal.label);
+    }
+
+    if (result?.sampleSummary?.checked) {
+      lines.push(
+        `• Sampel video: ${result.sampleSummary.checked}, yt_ad aktif: ${result.sampleSummary.ytAdHits || 0}`
+      );
+    }
+
+    return (
+      lines.join("\n") ||
+      "Tidak ada sinyal publik yang cukup untuk memastikan status monetisasi."
+    );
   }
 
   function ensureGlobalPanel() {
@@ -69,7 +87,12 @@
   }
 
   function updateGlobalPanel(result) {
-    if (!location.pathname.startsWith("/watch")) {
+    const relevant =
+      location.pathname.startsWith("/watch") ||
+      location.pathname.startsWith("/shorts/") ||
+      detector.normalizeChannelUrl(location.href);
+
+    if (!relevant) {
       document.getElementById("ymd-floating-status")?.remove();
       return;
     }
@@ -88,11 +111,7 @@
     const text = panel.querySelector(".ymd-floating-text");
     if (text && text.textContent !== nextText) text.textContent = nextText;
 
-    const signalText = (result.signals || []).map((s) => s.label).join(" • ");
-    const nextTitle =
-      signalText ||
-      "Tidak ada sinyal publik yang cukup untuk memastikan status monetisasi.";
-    if (panel.title !== nextTitle) panel.title = nextTitle;
+    panel.title = resultDetails(result);
   }
 
   function createBadge(result, settings) {
@@ -112,10 +131,7 @@
         ? `? MUNGKIN${confidence}`
         : "? BELUM PASTI";
 
-    const details = (result.signals || []).map((s) => s.label).join("\n");
-    badge.title =
-      details ||
-      "YouTube tidak menyediakan status YPP publik secara langsung. Tidak ada sinyal publik yang cukup.";
+    badge.title = resultDetails(result);
     return badge;
   }
 
@@ -154,26 +170,56 @@
 
   function collectChannelAnchors(limit) {
     const anchors = [];
-    const seenElements = new Set();
+    const seenUrls = new Set();
 
     for (const anchor of document.querySelectorAll(CHANNEL_SELECTOR)) {
       if (anchors.length >= limit) break;
-      if (seenElements.has(anchor)) continue;
       if (anchor.dataset.ymdProcessed === "1") continue;
 
-      const href = anchor.getAttribute("href");
-      const normalized = detector.normalizeChannelUrl(href);
-      if (!normalized) continue;
+      const normalized = detector.normalizeChannelUrl(anchor.getAttribute("href"));
+      if (!normalized || seenUrls.has(normalized)) continue;
 
       const rect = anchor.getBoundingClientRect();
       if (rect.width === 0 && rect.height === 0) continue;
 
-      seenElements.add(anchor);
+      seenUrls.add(normalized);
       anchor.dataset.ymdProcessed = "1";
       anchors.push({ anchor, url: normalized });
     }
 
     return anchors;
+  }
+
+  function findOwnerChannelLink() {
+    const selectors = [
+      '#owner a[href^="/@"]',
+      '#owner a[href^="/channel/"]',
+      'ytd-video-owner-renderer a[href^="/@"]',
+      'ytd-reel-video-renderer[is-active] a[href^="/@"]',
+      'ytd-reel-player-overlay-renderer a[href^="/@"]',
+      'a.yt-simple-endpoint[href^="/@"]'
+    ];
+
+    for (const selector of selectors) {
+      const el = document.querySelector(selector);
+      const normalized = detector.normalizeChannelUrl(el?.getAttribute("href"));
+      if (normalized) return normalized;
+    }
+
+    return detector.normalizeChannelUrl(location.href);
+  }
+
+  async function scanCurrentContext() {
+    const domDetection = detector.detectFromDocument(document);
+    const channelUrl = findOwnerChannelLink();
+    const channelResult = channelUrl ? await scanUrl(channelUrl) : null;
+
+    if (channelResult?.status === "detected") return channelResult;
+    if (domDetection.status === "detected") return domDetection;
+    if (channelResult?.status === "possible") return channelResult;
+    if (domDetection.status === "possible") return domDetection;
+
+    return channelResult || domDetection;
   }
 
   async function scanPage() {
@@ -187,7 +233,9 @@
     const items = collectChannelAnchors(settings.maxChannelsPerPage);
 
     const queue = [...items];
-    const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+    const workerCount = Math.min(3, queue.length);
+
+    const workers = Array.from({ length: workerCount }, async () => {
       while (queue.length && myToken === routeToken) {
         const item = queue.shift();
         if (!item) break;
@@ -197,29 +245,20 @@
           injectBadge(item.anchor, result, settings);
         }
 
-        await sleep(120);
+        await sleep(180);
       }
     });
 
     await Promise.all(workers);
 
-    if (location.pathname.startsWith("/watch")) {
-      const domDetection = detector.detectFromDocument(document);
-      const channelLink = document.querySelector(
-        '#owner a[href^="/@"], #owner a[href^="/channel/"], ytd-video-owner-renderer a[href^="/@"]'
-      );
-      const channelResult = channelLink
-        ? await scanUrl(channelLink.getAttribute("href"))
-        : null;
+    const isDetailPage =
+      location.pathname.startsWith("/watch") ||
+      location.pathname.startsWith("/shorts/") ||
+      Boolean(detector.normalizeChannelUrl(location.href));
 
-      const best =
-        channelResult?.status === "detected"
-          ? channelResult
-          : domDetection.status === "detected"
-          ? domDetection
-          : channelResult || domDetection;
-
-      updateGlobalPanel(best);
+    if (isDetailPage && myToken === routeToken) {
+      const result = await scanCurrentContext();
+      if (result && myToken === routeToken) updateGlobalPanel(result);
     } else {
       updateGlobalPanel({ status: "unknown" });
     }
@@ -232,9 +271,12 @@
 
   function resetForNavigation() {
     routeToken += 1;
+    document.getElementById("ymd-floating-status")?.remove();
+
     for (const el of document.querySelectorAll("[data-ymd-processed]")) {
       delete el.dataset.ymdProcessed;
     }
+
     scheduleScan(650);
   }
 
@@ -262,9 +304,10 @@
     observer?.disconnect();
     observer = new MutationObserver((mutations) => {
       const relevant = mutations.some(
-        (m) => !isExtensionMutation(m) && Boolean(m.addedNodes?.length)
+        (mutation) =>
+          !isExtensionMutation(mutation) && Boolean(mutation.addedNodes?.length)
       );
-      if (relevant) scheduleScan(650);
+      if (relevant) scheduleScan(700);
     });
 
     observer.observe(document.documentElement, {
