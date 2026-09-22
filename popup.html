@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>YouTube Monetization Detector</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="app">
+    <div class="title-row">
+      <div>
+        <h1>Monet Detector</h1>
+        <p>Indikator monetisasi YouTube</p>
+      </div>
+      <label class="switch" title="Aktif/nonaktif">
+        <input id="enabled" type="checkbox">
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <section class="card">
+      <div class="legend"><span class="dot green"></span><b>MONET</b><span>Sinyal YPP kuat terdeteksi</span></div>
+      <div class="legend"><span class="dot amber"></span><b>MUNGKIN</b><span>Ada sinyal lemah</span></div>
+      <div class="legend"><span class="dot gray"></span><b>BELUM PASTI</b><span>Data publik tidak cukup</span></div>
+    </section>
+
+    <section class="settings">
+      <label>
+        Maks. channel per halaman
+        <select id="maxChannels">
+          <option value="15">15</option>
+          <option value="30">30</option>
+          <option value="50">50</option>
+        </select>
+      </label>
+      <label class="check-row">
+        <input id="showConfidence" type="checkbox">
+        Tampilkan confidence
+      </label>
+    </section>
+
+    <div class="stats">
+      Total pemeriksaan: <b id="scanCount">0</b>
+    </div>
+
+    <p class="note">
+      Status channel orang lain tidak tersedia sebagai field YPP publik resmi.
+      Ekstensi ini memakai sinyal publik seperti Membership/Super Thanks dan tidak menganggap iklan saja sebagai bukti pasti.
+    </p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
