@@ -25,12 +25,11 @@
       id: "super_chat",
       weight: 70,
       patterns: [
-        /showLiveChatActionPanelRenderer/i,
         /purchaseMessageEndpoint/i,
-        /superChat/i,
-        /superSticker/i
+        /superChat(?:Renderer|Command|Endpoint)?/i,
+        /superSticker(?:Renderer|Command|Endpoint)?/i
       ],
-      label: "Fitur fan-funding live terdeteksi"
+      label: "Super Chat/Super Sticker terdeteksi"
     }
   ];
 
