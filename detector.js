@@ -333,15 +333,12 @@
       }
 
       const path = url.pathname.replace(/\/+$/, "");
-      const accepted = [
-        /^\/@[^/]+$/i,
-        /^\/channel\/UC[\w-]+$/i,
-        /^\/c\/[^/]+$/i,
-        /^\/user\/[^/]+$/i
-      ];
+      const match = path.match(
+        /^(\/@[^/]+|\/channel\/UC[\w-]+|\/c\/[^/]+|\/user\/[^/]+)(?:\/.*)?$/i
+      );
 
-      if (!accepted.some((re) => re.test(path))) return null;
-      return "https://www.youtube.com" + path;
+      if (!match) return null;
+      return "https://www.youtube.com" + match[1];
     } catch (_) {
       return null;
     }
