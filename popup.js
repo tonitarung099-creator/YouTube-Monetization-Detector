@@ -13,9 +13,9 @@ async function load() {
   enabled.checked = data.ymdEnabled !== false;
 
   const settings = data.ymdSettings || {};
-  maxChannels.value = String(settings.maxChannelsPerPage || 30);
+  maxChannels.value = String(settings.maxChannelsPerPage || 15);
   showConfidence.checked = settings.showConfidence !== false;
-  scanCount.textContent = String(data.ymdStats?.scans || 0);
+  scanCount.textContent = String(data.ymdStats?.scans || 0);\n  const videoCount = document.getElementById("videoSampleCount");\n  if (videoCount) videoCount.textContent = String(data.ymdStats?.videoSamples || 0);
 }
 
 async function saveSettings() {
