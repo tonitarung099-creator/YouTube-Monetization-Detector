@@ -150,7 +150,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (typeof current.ymdEnabled !== "boolean") patch.ymdEnabled = true;
   if (!current.ymdSettings) {
     patch.ymdSettings = {
-      maxChannelsPerPage: 30,
+      maxChannelsPerPage: 15,
       showConfidence: true
     };
   }
