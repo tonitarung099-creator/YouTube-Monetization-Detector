@@ -18,6 +18,13 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Check JavaScript syntax
+        run: |
+          node --check detector.js
+          node --check background.js
+          node --check content.js
+          node --check popup.js
+
       - name: Run detector tests
         run: npm test
 
