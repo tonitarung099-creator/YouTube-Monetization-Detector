@@ -4,52 +4,73 @@ Ekstensi Chrome Manifest V3 untuk menampilkan **indikator monetisasi channel You
 
 ## Status proyek
 
-Versi awal **v0.1.0** sudah memiliki:
+Versi **v0.2.0** sekarang memiliki:
 
-- Badge otomatis pada link channel di halaman YouTube.
-- Dukungan Home, Search, halaman video, channel, dan area lain yang memuat link channel.
-- Pemindaian maksimal beberapa channel per halaman dengan concurrency terbatas.
-- Cache hasil selama 6 jam agar tidak terus-menerus meminta halaman yang sama.
-- Popup untuk aktif/nonaktif, batas scan, dan confidence.
-- Indikator mengambang pada halaman video.
-- Tidak memerlukan AI API atau kartu kredit.
+- Badge otomatis pada channel yang muncul di YouTube.
+- Dukungan Home, Search, halaman video, halaman channel, dan Shorts.
+- Pemeriksaan halaman channel **plus sampai 3 video sampel**.
+- Deteksi beberapa sinyal sekaligus:
+  - Membership / Join.
+  - Super Thanks.
+  - Super Chat / Super Sticker.
+  - Merch shelf.
+  - flag monetisasi eksplisit jika tersedia.
+  - `monetizationDetails`.
+  - `yt_ad=1` pada video sampel.
+  - sinyal iklan umum hanya sebagai bukti lemah.
+- Cache hasil selama 6 jam.
+- Popup aktif/nonaktif, batas scan, confidence, dan statistik scan.
+- Tidak memerlukan AI API, YouTube Data API, atau kartu kredit.
 
-## Arti status
+## Cara penilaian
 
-- **MONET** — ditemukan sinyal publik kuat seperti Membership/Join atau Super Thanks.
-- **MUNGKIN** — ditemukan sinyal yang lebih lemah seperti data penempatan iklan.
-- **BELUM PASTI** — tidak ada cukup data publik.
+Ekstensi tidak hanya melihat satu iklan lalu menyimpulkan monetisasi.
 
-> YouTube tidak menyediakan field publik sederhana `YPP=true/false` untuk channel orang lain. Karena itu ekstensi ini tidak menyebut channel “tidak monetisasi” hanya karena sinyal tidak ditemukan. Iklan juga tidak diperlakukan sebagai bukti tunggal bahwa kreator menerima pendapatan.
+- **MONET** — ada sinyal kuat seperti Membership/Super Thanks/flag monetisasi, atau sedikitnya 2 video sampel memberi sinyal `yt_ad`.
+- **MUNGKIN** — contohnya hanya 1 video sampel memberi sinyal `yt_ad` atau bukti pendukung belum cukup kuat.
+- **BELUM PASTI** — tidak ada cukup bukti publik.
 
-## Cara memasang untuk pengembangan
+Confidence yang ditampilkan adalah **skor heuristik ekstensi**, bukan angka resmi dari YouTube.
 
-1. Download/clone repo.
+> YouTube tidak menyediakan field publik resmi sederhana `YPP=true/false` untuk channel orang lain. Karena itu status negatif tidak boleh dianggap bukti pasti bahwa channel belum masuk YPP.
+
+## Dasar teknik
+
+Versi ini ditulis ulang untuk struktur proyek ini, tetapi metode pemeriksaan video sampel terinspirasi dari teknik komunitas open-source yang memeriksa `yt_ad`, tombol Join, dan beberapa video channel. Implementasi di repo ini tidak menyalin mentah kode repo tanpa lisensi yang jelas.
+
+## Cara memasang
+
+1. Download ZIP repo ini lalu extract.
 2. Buka Chrome.
 3. Masuk ke `chrome://extensions`.
 4. Aktifkan **Developer mode**.
-5. Pilih **Load unpacked**.
-6. Pilih folder repo ini.
-7. Buka YouTube dan refresh halaman.
+5. Klik **Load unpacked**.
+6. Pilih folder yang berisi `manifest.json`.
+7. Buka atau refresh YouTube.
 
-## Test lokal
+## Test
 
-Jika Node.js terpasang:
+Jika Node.js tersedia:
 
 ```bash
 npm test
 ```
 
+GitHub Actions juga menjalankan test detector dan validasi `manifest.json` pada setiap push.
+
 ## Struktur
 
 - `manifest.json` — konfigurasi Chrome Extension MV3.
-- `detector.js` — mesin klasifikasi sinyal publik.
-- `background.js` — fetch halaman channel + cache.
-- `content.js` — integrasi badge dengan UI YouTube.
+- `detector.js` — parsing dan agregasi sinyal monetisasi.
+- `background.js` — fetch channel/video sampel + cache.
+- `content.js` — badge dan panel status di UI YouTube.
 - `styles.css` — tampilan badge.
-- `popup.*` — panel pengaturan ekstensi.
-- `tests/` — test logika detector.
+- `popup.*` — panel pengaturan.
+- `tests/` — test mesin detector.
 
-## Prinsip
+## Target berikutnya
 
-Target utamanya adalah **cepat, gratis, tanpa API berbayar, dan jujur terhadap tingkat kepastian**. Algoritme bisa terus ditambah jika ditemukan sinyal publik baru yang lebih akurat.
+- Memperluas coverage UI YouTube jika selector berubah.
+- Mengurangi request lebih jauh dengan cache lintas halaman.
+- Menambah diagnostics agar channel yang salah terdeteksi mudah dianalisis.
+- Menguji detector terhadap kumpulan channel dengan status yang sudah diketahui.
